@@ -30,7 +30,7 @@ export class HomeComponent {
   public maxPower: number = 50;
   public maxAsicTemp: number = 75;
   public maxVrTemp: number = 100;
-  public maxFrequency: number = 1000;
+  public maxFrequency: number = 1200;
 
   constructor(
     private systemService: SystemService,
@@ -248,7 +248,7 @@ export class HomeComponent {
         this.maxPower = Math.max(50, info.power);
         this.maxAsicTemp = Math.max(75, info.temp);
         this.maxVrTemp = Math.max(100, info.vrTemp);
-        this.maxFrequency = Math.max(1000, info.frequency);
+        this.maxFrequency = Math.max(1200, info.frequency);
 
       }),
       map(info => {
