@@ -147,24 +147,32 @@
                     <div class="col-12">
 
                         <h6>ASIC Temperature <span style="float: right;">{{info.temp}}&deg;C</span></h6>
-                        <p-progressBar [value]="(info.temp / maxTemp) * 100" [style]="{ height: '6px' }" >
+                        <p-progressBar [value]="(info.temp / maxAsicTemp) * 100" [style]="{ height: '6px' }" >
                             <ng-template pTemplate="content" let-value></ng-template>
                         </p-progressBar>
 
-                        <span class="danger" *ngIf="info.temp >= 70">&nbsp;
+                        <span class="warning" *ngIf="info.temp >= (maxAsicTemp - 10)">&nbsp;
                             Danger:
                             High Temperature</span>
+
+                        <span class="danger" *ngIf="info.temp >= (maxAsicTemp - 5)">&nbsp;
+                            Danger:
+                            Critical Temperature</span>
                     </div>
                     <div class="col-12" *ngIf="info.vrTemp > 0">
 
                         <h6>Voltage Regulator Temperature <span style="float: right;">{{info.vrTemp}}&deg;C</span></h6>
-                        <p-progressBar [value]="(info.vrTemp / 120) * 100" [style]="{ height: '6px' }" >
+                        <p-progressBar [value]="(info.vrTemp / maxVrTemp) * 100" [style]="{ height: '6px' }" >
                             <ng-template pTemplate="content" let-value></ng-template>
                         </p-progressBar>
 
-                        <span class="danger" *ngIf="info.vrTemp >= 105">&nbsp;
+                        <span class="warning" *ngIf="info.vrTemp >= (maxVrTemp - 10)">&nbsp;
                             Danger:
                             High Temperature</span>
+
+                        <span class="danger" *ngIf="info.vrTemp >= (maxVrTemp - 5)">&nbsp;
+                            Danger:
+                            Critical Temperature</span>
                     </div>
                     <div class="col-12">
                         <h6>Fan Speed<span style="float: right;">{{info.fanspeed}}%  ({{info.fanrpm}} RPM)</span></h6>
