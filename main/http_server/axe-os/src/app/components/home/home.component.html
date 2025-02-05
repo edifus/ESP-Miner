@@ -151,7 +151,7 @@
                             <ng-template pTemplate="content" let-value></ng-template>
                         </p-progressBar>
 
-                        <span class="danger" *ngIf="info.temp >= 70">&nbsp;
+                        <span class="danger" *ngIf="info.temp >= (maxAsicTemp - 5)">&nbsp;
                             Danger:
                             High Temperature</span>
                     </div>
@@ -162,7 +162,7 @@
                             <ng-template pTemplate="content" let-value></ng-template>
                         </p-progressBar>
 
-                        <span class="danger" *ngIf="info.vrTemp >= 95">&nbsp;
+                        <span class="danger" *ngIf="info.vrTemp >= (maxVrTemp - 5)">&nbsp;
                             Danger:
                             High Temperature</span>
                     </div>
