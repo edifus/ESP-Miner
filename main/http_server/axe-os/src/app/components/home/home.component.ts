@@ -22,13 +22,15 @@ export class HomeComponent {
   public chartOptions: any;
   public dataLabel: number[] = [];
   public hashrateData: number[] = [];
-  public temperatureData: number[] = [];
+  public asicTempData: number[] = [];
+  public vrTempData: number[] = [];
   public dataDataAverage: number[] = [];
   public chartData?: any;
 
   public maxPower: number = 50;
-  public maxTemp: number = 75;
-  public maxFrequency: number = 800;
+  public maxAsicTemp: number = 75;
+  public maxVrTemp: number = 100;
+  public maxFrequency: number = 1000;
 
   constructor(
     private systemService: SystemService,
@@ -57,6 +59,8 @@ export class HomeComponent {
       this.chartData.datasets[1].borderColor = primaryColor + '60';
       this.chartData.datasets[2].backgroundColor = textColorSecondary;
       this.chartData.datasets[2].borderColor = textColorSecondary;
+      this.chartData.datasets[3].backgroundColor = textColorSecondary;
+      this.chartData.datasets[3].borderColor = textColorSecondary;
     }
 
     // Update chart options
@@ -88,6 +92,7 @@ export class HomeComponent {
           type: 'line',
           label: 'Hashrate',
           data: [],
+          fill: true,
           backgroundColor: primaryColor + '30',
           borderColor: primaryColor,
           tension: 0,
@@ -95,14 +100,13 @@ export class HomeComponent {
           pointHoverRadius: 5,
           borderWidth: 1,
           yAxisID: 'y',
-          fill: true,
         },
         {
           type: 'line',
           label: 'Average Hashrate',
           data: [],
           fill: false,
-          backgroundColor: primaryColor +  '30',
+          backgroundColor: primaryColor + '30',
           borderColor: primaryColor + '60',
           tension: 0,
           pointRadius: 0,
@@ -121,6 +125,20 @@ export class HomeComponent {
           pointRadius: 2,
           pointHoverRadius: 5,
           borderWidth: 1,
+          yAxisID: 'y2',
+        },
+        {
+          type: 'line',
+          label: 'VR Temp',
+          data: [],
+          fill: false,
+          backgroundColor: textColorSecondary,
+          borderColor: textColorSecondary,
+          tension: 0,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          borderWidth: 2,
+          borderDash: [5, 5],
           yAxisID: 'y2',
         }
       ]
@@ -142,7 +160,7 @@ export class HomeComponent {
               if (label) {
                 label += ': ';
               }
-              if (tooltipItem.dataset.label === 'ASIC Temp') {
+              if ((tooltipItem.dataset.label === 'ASIC Temp') || (tooltipItem.dataset.label === 'VR Temp')) {
                 label += tooltipItem.raw + '°C';
               } else {
                 label += HashSuffixPipe.transform(tooltipItem.raw);
@@ -202,19 +220,22 @@ export class HomeComponent {
       }),
       tap(info => {
         this.hashrateData.push(info.hashRate * 1000000000);
-        this.temperatureData.push(info.temp);
+        this.asicTempData.push(info.temp);
+        this.vrTempData.push(info.vrTemp);
 
         this.dataLabel.push(new Date().getTime());
 
         if (this.hashrateData.length >= 720) {
           this.hashrateData.shift();
-          this.temperatureData.shift();
+          this.asicTempData.shift();
+          this.vrTempData.shift();
           this.dataLabel.shift();
         }
 
         this.chartData.labels = this.dataLabel;
         this.chartData.datasets[0].data = this.hashrateData;
-        this.chartData.datasets[2].data = this.temperatureData;
+        this.chartData.datasets[2].data = this.asicTempData;
+        this.chartData.datasets[3].data = this.vrTempData;
 
         // Calculate average hashrate and fill the array with the same value for the average line
         const averageHashrate = this.calculateAverage(this.hashrateData);
@@ -225,8 +246,9 @@ export class HomeComponent {
         };
 
         this.maxPower = Math.max(50, info.power);
-        this.maxTemp = Math.max(75, info.temp);
-        this.maxFrequency = Math.max(800, info.frequency);
+        this.maxAsicTemp = Math.max(75, info.temp);
+        this.maxVrTemp = Math.max(100, info.vrTemp);
+        this.maxFrequency = Math.max(1000, info.frequency);
 
       }),
       map(info => {
@@ -236,6 +258,7 @@ export class HomeComponent {
         info.coreVoltageActual = parseFloat((info.coreVoltageActual / 1000).toFixed(2));
         info.coreVoltage = parseFloat((info.coreVoltage / 1000).toFixed(2));
         info.temp = parseFloat(info.temp.toFixed(1));
+        info.vrTemp = parseFloat(info.vrTemp.toFixed(1));
 
         return info;
       }),
