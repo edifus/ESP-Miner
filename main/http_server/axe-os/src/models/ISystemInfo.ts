@@ -14,6 +14,8 @@ export interface ISystemInfo {
     current: number,
     temp: number,
     vrTemp: number,
+    maxPower: number,
+    nominalVoltage: number,
     hashRate: number,
     bestDiff: string,
     bestSessionDiff: string,
@@ -51,5 +53,6 @@ export interface ISystemInfo {
     boardtemp1?: number,
     boardtemp2?: number,
     overheat_mode: number,
+    power_fault?: string
     overclockEnabled?: number
 }
