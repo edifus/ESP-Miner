@@ -23,6 +23,10 @@
     }
 }
 
+.btn--icon:focus {
+    box-shadow: none;
+}
+
 // Nord theme colors
 .ansi-red { color: #bf616a; }
 .ansi-green { color: #a3be8c; }
