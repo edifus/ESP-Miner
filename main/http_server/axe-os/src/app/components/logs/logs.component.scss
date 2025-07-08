@@ -1,6 +1,6 @@
 #logs {
     height: calc(100svh - 4rem - 10rem - 4rem - 4px); // padding + height + border
-    font-family: monospace;
+    font-family: 'JetBrainsMono Nerd Font', monospace;
     border: 1px solid #304562;
     overflow-y: scroll;
     overflow-x: hidden;
@@ -12,7 +12,7 @@
     > div {
         max-width: 100%;
         line-break: anywhere;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: 'JetBrainsMono Nerd Font', 'Courier New', Courier, monospace;
     }
 }
 
@@ -34,10 +34,10 @@
     }
 }
 
-.ansi-red { color: #ff0000; }
-.ansi-green { color: #00ff00; }
-.ansi-yellow { color: #ffff00; }
-.ansi-blue { color: #0000ff; }
-.ansi-magenta { color: #ff00ff; }
-.ansi-cyan { color: #00ffff; }
-.ansi-white { color: #ffffff; }
+.ansi-red { color: #bf616a; }
+.ansi-green { color: #a3be8c; }
+.ansi-yellow { color: #ebdb8b; }
+.ansi-blue { color: #5e81ac; }
+.ansi-magenta { color: #b48ead; }
+.ansi-cyan { color: #8fbcbb; }
+.ansi-white { color: #eceff4; }
