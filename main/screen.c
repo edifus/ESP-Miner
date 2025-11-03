@@ -22,6 +22,7 @@ typedef enum {
     SCR_OSMU_LOGO,
     SCR_URLS,
     SCR_STATS,
+    SCR_MINING,
     SCR_WIFI,
     MAX_SCREENS,
 } screen_t;
@@ -29,13 +30,12 @@ typedef enum {
 #define SCREEN_UPDATE_MS 500
 
 #define SCR_CAROUSEL_START SCR_URLS
-#define SCR_CAROUSEL_END SCR_WIFI
 
 extern const lv_img_dsc_t bitaxe_logo;
 extern const lv_img_dsc_t osmu_logo;
 
 static lv_obj_t * screens[MAX_SCREENS];
-static int delays_ms[MAX_SCREENS] = {0, 0, 0, 0, 0, 1000, 3000, 3000, 10000, 10000, 5000};
+static int delays_ms[MAX_SCREENS] = {0, 0, 0, 0, 0, 1000, 3000, 3000, 10000, 10000, 10000, 10000};
 
 static screen_t current_screen = -1;
 static int current_screen_time_ms;
@@ -53,6 +53,10 @@ static lv_obj_t *self_test_finished_label;
 static lv_obj_t *overheat_ip_addr_label;
 
 static lv_obj_t *asic_status_label;
+
+static lv_obj_t *mining_block_height_label;
+static lv_obj_t *mining_network_difficulty_label;
+static lv_obj_t *mining_scriptsig_label;
 
 static lv_obj_t *firmware_update_scr_filename_label;
 static lv_obj_t *firmware_update_scr_status_label;
@@ -73,7 +77,7 @@ static lv_obj_t *wifi_uptime_label;
 
 static lv_obj_t *notification_label;
 
-static double current_hashrate;
+static float current_hashrate;
 static float current_power;
 static uint64_t current_difficulty;
 static float current_chip_temp;
@@ -97,6 +101,7 @@ static uint64_t current_shares_accepted;
 static uint64_t current_shares_rejected;
 static uint64_t current_work_received;
 static int8_t current_rssi_value;
+static int current_block_height;
 
 static bool self_test_finished;
 
@@ -278,8 +283,28 @@ static lv_obj_t * create_scr_stats() {
     return scr;
 }
 
+static lv_obj_t * create_scr_mining() {
+    lv_obj_t * scr = create_flex_screen(4);
+
+    mining_block_height_label = lv_label_create(scr);
+    lv_label_set_text(mining_block_height_label, "Block: --");
+
+    mining_network_difficulty_label = lv_label_create(scr);
+    lv_label_set_text(mining_network_difficulty_label, "Difficulty: --");
+
+    lv_obj_t *label3 = lv_label_create(scr);
+    lv_label_set_text(label3, "Scriptsig:");
+
+    mining_scriptsig_label = lv_label_create(scr);
+    lv_label_set_text(mining_scriptsig_label, "--");
+    lv_obj_set_width(mining_scriptsig_label, LV_HOR_RES);
+    lv_label_set_long_mode(mining_scriptsig_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+
+    return scr;
+}
+
 static lv_obj_t * create_scr_wifi() {
-    lv_obj_t * scr = create_flex_screen(3);
+    lv_obj_t * scr = create_flex_screen(4);
 
     lv_obj_t *title_label = lv_label_create(scr);
     lv_label_set_text(title_label, "Wi-Fi Signal");
@@ -306,7 +331,8 @@ static void screen_show(screen_t screen)
         lv_obj_t * scr = screens[screen];
 
         if (scr && lvgl_port_lock(0)) {
-            lv_screen_load_anim(scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, LV_DEF_REFR_PERIOD * 128 / 8, 0, false);
+            bool auto_del = current_screen == SCR_BITAXE_LOGO || current_screen == SCR_OSMU_LOGO;
+            lv_screen_load_anim(scr, LV_SCR_LOAD_ANIM_MOVE_LEFT, LV_DEF_REFR_PERIOD * 128 / 8, 0, auto_del);
             lvgl_port_unlock();
         }
 
@@ -318,7 +344,7 @@ static void screen_show(screen_t screen)
 
 static void screen_update_cb(lv_timer_t * timer)
 {
-    int32_t display_timeout_config = nvs_config_get_i32(NVS_CONFIG_DISPLAY_TIMEOUT, -1);
+    int32_t display_timeout_config = nvs_config_get_i32(NVS_CONFIG_DISPLAY_TIMEOUT);
 
     if (0 > display_timeout_config) {
         // display always on
@@ -372,7 +398,7 @@ static void screen_update_cb(lv_timer_t * timer)
         return;
     }
 
-    if (module->overheat_mode == 1) {
+    if (module->overheat_mode) {
         if (strcmp(module->ip_addr_str, lv_label_get_text(overheat_ip_addr_label)) != 0) {
             lv_label_set_text(overheat_ip_addr_label, module->ip_addr_str);
         }
@@ -424,7 +450,7 @@ static void screen_update_cb(lv_timer_t * timer)
     current_hashrate = module->current_hashrate;
 
     if (current_difficulty != module->best_session_nonce_diff) {
-        if (module->FOUND_BLOCK) {
+        if (module->block_found) {
             lv_obj_set_width(stats_difficulty_label, LV_HOR_RES);
             lv_label_set_long_mode(stats_difficulty_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
             lv_label_set_text_fmt(stats_difficulty_label, "Best: %s   !!! BLOCK FOUND !!!", module->best_session_diff_string);
@@ -436,11 +462,25 @@ static void screen_update_cb(lv_timer_t * timer)
 
     if (current_chip_temp != power_management->chip_temp_avg) {
         if (power_management->chip_temp_avg > 0) {
-            lv_label_set_text_fmt(stats_temp_label, "Temp: %.1f C", power_management->chip_temp_avg);    
+            lv_label_set_text_fmt(stats_temp_label, "Temp: %.1f°C", power_management->chip_temp_avg);    
         }
         current_chip_temp = power_management->chip_temp_avg;
     }
 
+    if (current_block_height != GLOBAL_STATE->block_height) {
+        lv_label_set_text_fmt(mining_block_height_label, "Block: %d", GLOBAL_STATE->block_height);
+        current_block_height = GLOBAL_STATE->block_height;
+    }
+    
+    if (strcmp(&lv_label_get_text(mining_network_difficulty_label)[9], GLOBAL_STATE->network_diff_string) != 0) {
+        lv_label_set_text_fmt(mining_network_difficulty_label, "Difficulty: %s", GLOBAL_STATE->network_diff_string);
+    }
+
+    if (GLOBAL_STATE->scriptsig != NULL && strcmp(lv_label_get_text(mining_scriptsig_label), GLOBAL_STATE->scriptsig) != 0) {
+        lv_label_set_text(mining_scriptsig_label, GLOBAL_STATE->scriptsig);
+    }
+
+    // Update WiFi RSSI periodically
     int8_t rssi_value = -128;
     if (GLOBAL_STATE->SYSTEM_MODULE.is_connected) {
         get_wifi_current_rssi(&rssi_value);
@@ -493,7 +533,7 @@ static void screen_update_cb(lv_timer_t * timer)
         }
     }
 
-    if (module->FOUND_BLOCK) {
+    if (module->block_found) {
         if (current_screen != SCR_STATS) {
             screen_show(SCR_STATS);
         }
@@ -511,17 +551,11 @@ static void screen_update_cb(lv_timer_t * timer)
 
 void screen_next()
 {
-    screen_t next_scr = current_screen;
+    screen_t next_scr = current_screen + 1;
 
-    // Loop to find the next screen that should be displayed
-    do {
-        next_scr++; // Advance to the next screen candidate
-        if (next_scr > SCR_CAROUSEL_END) { // If past the end of carousel
-            next_scr = SCR_CAROUSEL_START; // Wrap around to the start of carousel
-        }
-        // If the candidate screen is SCR_WIFI_RSSI AND this is NOT a bigger display,
-        // then this screen should be skipped, and the loop will continue to find the next one.
-    } while (next_scr == SCR_WIFI && screen_lines == 4);
+    if (next_scr == MAX_SCREENS) {
+        next_scr = SCR_CAROUSEL_START;
+    }
 
     screen_show(next_scr);
 }
@@ -557,35 +591,39 @@ static void uptime_update_cb(lv_timer_t * timer)
 
 esp_err_t screen_start(void * pvParameters)
 {
-    // screen_chars = lv_display_get_horizontal_resolution(NULL) / 6;
-    screen_lines = lv_display_get_vertical_resolution(NULL) / 8;
+    if (lvgl_port_lock(0)) {
+        // screen_chars = lv_display_get_horizontal_resolution(NULL) / 6;
+        screen_lines = lv_display_get_vertical_resolution(NULL) / 8;
 
-    GLOBAL_STATE = (GlobalState *) pvParameters;
+        GLOBAL_STATE = (GlobalState *) pvParameters;
 
-    if (GLOBAL_STATE->SYSTEM_MODULE.is_screen_active) {
-        SystemModule * module = &GLOBAL_STATE->SYSTEM_MODULE;
+        if (GLOBAL_STATE->SYSTEM_MODULE.is_screen_active) {
+            SystemModule * module = &GLOBAL_STATE->SYSTEM_MODULE;
 
-        screens[SCR_SELF_TEST] = create_scr_self_test();
-        screens[SCR_OVERHEAT] = create_scr_overheat(module);
-        screens[SCR_ASIC_STATUS] = create_scr_asic_status(module);
-        screens[SCR_WELCOME] = create_scr_welcome(module);
-        screens[SCR_FIRMWARE] = create_scr_firmware(module);
-        screens[SCR_CONNECTION] = create_scr_connection(module);
-        screens[SCR_BITAXE_LOGO] = create_scr_bitaxe_logo(GLOBAL_STATE->DEVICE_CONFIG.family.name, GLOBAL_STATE->DEVICE_CONFIG.board_version);
-        screens[SCR_OSMU_LOGO] = create_scr_osmu_logo();
-        screens[SCR_URLS] = create_scr_urls(module);
-        screens[SCR_STATS] = create_scr_stats();
-        screens[SCR_WIFI] = create_scr_wifi();
+            screens[SCR_SELF_TEST] = create_scr_self_test();
+            screens[SCR_OVERHEAT] = create_scr_overheat(module);
+            screens[SCR_ASIC_STATUS] = create_scr_asic_status(module);
+            screens[SCR_WELCOME] = create_scr_welcome(module);
+            screens[SCR_FIRMWARE] = create_scr_firmware(module);
+            screens[SCR_CONNECTION] = create_scr_connection(module);
+            screens[SCR_BITAXE_LOGO] = create_scr_bitaxe_logo(GLOBAL_STATE->DEVICE_CONFIG.family.name, GLOBAL_STATE->DEVICE_CONFIG.board_version);
+            screens[SCR_OSMU_LOGO] = create_scr_osmu_logo();
+            screens[SCR_URLS] = create_scr_urls(module);
+            screens[SCR_STATS] = create_scr_stats();
+            screens[SCR_MINING] = create_scr_mining();
+            screens[SCR_WIFI] = create_scr_wifi();
 
-        notification_label = lv_label_create(lv_layer_top());
-        lv_label_set_text(notification_label, "");
-        lv_obj_align(notification_label, LV_ALIGN_TOP_RIGHT, 0, 0);
-        lv_obj_add_flag(notification_label, LV_OBJ_FLAG_HIDDEN);
+            notification_label = lv_label_create(lv_layer_top());
+            lv_label_set_text(notification_label, "");
+            lv_obj_align(notification_label, LV_ALIGN_TOP_RIGHT, 0, 0);
+            lv_obj_add_flag(notification_label, LV_OBJ_FLAG_HIDDEN);
 
-        lv_timer_create(screen_update_cb, SCREEN_UPDATE_MS, NULL);
+            lv_timer_create(screen_update_cb, SCREEN_UPDATE_MS, NULL);
 
-        // Create uptime update timer (runs every 1 second)
-        lv_timer_create(uptime_update_cb, 1000, NULL);
+            // Create uptime update timer (runs every 1 second)
+            lv_timer_create(uptime_update_cb, 1000, NULL);
+        }
+        lvgl_port_unlock();
     }
 
     return ESP_OK;
