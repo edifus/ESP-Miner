@@ -27,6 +27,7 @@
 #define LCD_PARAM_BITS         8
 
 static const char * TAG = "display";
+static const char * LVGL_TAG = "lvgl";
 
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static bool display_state_on = false;
@@ -59,6 +60,29 @@ static esp_err_t read_display_config(GlobalState * GLOBAL_STATE)
 
     free(display_config_name);
     return ESP_FAIL;
+}
+
+static void my_log_cb(lv_log_level_t level, const char * buf)
+{
+    switch (level) {
+        case LV_LOG_LEVEL_TRACE:
+            ESP_LOGV(LVGL_TAG, "%s", buf);
+            break;
+        case LV_LOG_LEVEL_INFO:
+            ESP_LOGI(LVGL_TAG, "%s", buf);
+            break;
+        case LV_LOG_LEVEL_WARN:
+            ESP_LOGW(LVGL_TAG, "%s", buf);
+            break;
+        case LV_LOG_LEVEL_ERROR:
+            ESP_LOGE(LVGL_TAG, "%s", buf);
+            break;
+        case LV_LOG_LEVEL_USER:
+            ESP_LOGI(LVGL_TAG, "%s", buf);
+            break;
+        case LV_LOG_LEVEL_NONE:
+            break;
+    }
 }
 
 esp_err_t display_init(void * pvParameters)
@@ -136,11 +160,21 @@ esp_err_t display_init(void * pvParameters)
         bool invert_screen = nvs_config_get_bool(NVS_CONFIG_INVERT_SCREEN);
         ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel_handle, invert_screen), TAG, "Panel invert failed");
         // ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(panel_handle, false, false), TAG, "Panel mirror failed");
+
+        if (GLOBAL_STATE->DISPLAY_CONFIG.display == SH1107) {
+            uint8_t display_offset = nvs_config_get_u16(NVS_CONFIG_DISPLAY_OFFSET);
+            if (display_offset != LCD_SH1107_PARAM_DEFAULT_DISP_OFFSET) {
+                ESP_LOGI(TAG, "SH1107 Display Offset: 0x%02x", display_offset);
+                esp_lcd_panel_io_tx_param(io_handle, LCD_SH1107_I2C_CMD, (uint8_t[]) { LCD_SH1107_PARAM_SET_DISP_OFFSET, display_offset }, 2);
+            }
+        }
     }
 
     ESP_LOGI(TAG, "Initialize LVGL");
 
     ESP_RETURN_ON_ERROR(lvgl_port_init(&lvgl_cfg), TAG, "LVGL init failed");
+
+    lv_log_register_print_cb(my_log_cb);
 
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle = io_handle,
@@ -158,7 +192,7 @@ esp_err_t display_init(void * pvParameters)
     };
 
     lv_disp_t * disp = lvgl_port_add_disp(&disp_cfg);
-     if (!disp) { // Check if disp is NULL
+    if (!disp) { // Check if disp is NULL
         ESP_LOGE(TAG, "lvgl_port_add_disp failed!");
         // Potential cleanup
         // if (panel_handle) esp_lcd_panel_del(panel_handle);
