@@ -3,8 +3,9 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "asic_task.h"
 #include "common.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "power_management_task.h"
 #include "hashrate_monitor_task.h"
 #include "serial.h"
@@ -82,6 +83,8 @@ typedef struct
     char firmware_update_filename[20];
     char firmware_update_status[20];
     char * asic_status;
+    char * version;
+    char * axeOSVersion;
 } SystemModule;
 
 typedef struct
@@ -95,8 +98,19 @@ typedef struct
 
 typedef struct
 {
+    // ASIC may not return the nonce in the same order as the jobs were sent
+    // it also may return a previous nonce under some circumstances
+    // so we keep a list of jobs indexed by the job id
+    bm_job **active_jobs;
+    // Current job to be processed (replaces ASIC_jobs_queue)
+    bm_job *current_job;
+    //semaphone
+    SemaphoreHandle_t semaphore;
+} AsicTaskModule;
+
+typedef struct
+{
     work_queue stratum_queue;
-    work_queue ASIC_jobs_queue;
 
     SystemModule SYSTEM_MODULE;
     DeviceConfig DEVICE_CONFIG;
@@ -108,7 +122,6 @@ typedef struct
 
     char * extranonce_str;
     int extranonce_2_len;
-    int abandon_work;
 
     uint8_t * valid_jobs;
     pthread_mutex_t valid_jobs_lock;
