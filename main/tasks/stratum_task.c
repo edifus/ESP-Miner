@@ -7,6 +7,7 @@
 #include "work_queue.h"
 #include "esp_wifi.h"
 #include <esp_sntp.h>
+#include "esp_timer.h"
 #include <sys/time.h>
 #include <stdbool.h>
 #include <string.h>
@@ -342,11 +343,13 @@ static void decode_mining_notification(GlobalState * GLOBAL_STATE, const mining_
     memset(result, 0, sizeof(mining_notification_result_t));
 
     const char * user = GLOBAL_STATE->SYSTEM_MODULE.is_using_fallback ? GLOBAL_STATE->SYSTEM_MODULE.fallback_pool_user : GLOBAL_STATE->SYSTEM_MODULE.pool_user;
+    bool decode_coinbase = GLOBAL_STATE->SYSTEM_MODULE.is_using_fallback ? GLOBAL_STATE->SYSTEM_MODULE.fallback_pool_decode_coinbase : GLOBAL_STATE->SYSTEM_MODULE.pool_decode_coinbase;
 
     if (coinbase_process_notification(mining_notification,
                                      GLOBAL_STATE->extranonce_str,
                                      GLOBAL_STATE->extranonce_2_len,
                                      user,
+                                     decode_coinbase,
                                      result) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to process mining notification");
         free(result);
@@ -378,14 +381,16 @@ static void decode_mining_notification(GlobalState * GLOBAL_STATE, const mining_
     if (result->output_count > MAX_COINBASE_TX_OUTPUTS) {
         result->output_count = MAX_COINBASE_TX_OUTPUTS;
     }
+
+    GLOBAL_STATE->coinbase_value_total_satoshis = result->total_value_satoshis;
+    ESP_LOGI(TAG, "Coinbase outputs: %d, total value: %llu%s", result->output_count, result->total_value_satoshis, result->decoding_enabled ? " sats" : "");
+    
     if (result->output_count != GLOBAL_STATE->coinbase_output_count ||
         memcmp(result->outputs, GLOBAL_STATE->coinbase_outputs, sizeof(coinbase_output_t) * result->output_count) != 0) {
-
+            
         GLOBAL_STATE->coinbase_output_count = result->output_count;
         memcpy(GLOBAL_STATE->coinbase_outputs, result->outputs, sizeof(coinbase_output_t) * result->output_count);
-        GLOBAL_STATE->coinbase_value_total_satoshis = result->total_value_satoshis;
         GLOBAL_STATE->coinbase_value_user_satoshis = result->user_value_satoshis;
-        ESP_LOGI(TAG, "Coinbase outputs: %d, total value: %llu sat", result->output_count, result->total_value_satoshis);
         for (int i = 0; i < result->output_count; i++) {
             if (result->outputs[i].value_satoshis > 0) {
                 if (result->outputs[i].is_user_output) {
@@ -533,7 +538,6 @@ void stratum_task(void * pvParameters)
 
         //mining.authorize - ID: 3
         STRATUM_V1_authorize(GLOBAL_STATE->transport, authorize_message_id, username, password);
-        STRATUM_V1_stamp_tx(authorize_message_id);
 
         while (1) {
             char * line = STRATUM_V1_receive_jsonrpc_line(GLOBAL_STATE->transport);
@@ -544,11 +548,7 @@ void stratum_task(void * pvParameters)
                 break;
             }
 
-            double response_time_ms = STRATUM_V1_get_response_time_ms(stratum_api_v1_message.message_id);
-            if (response_time_ms >= 0) {
-                ESP_LOGI(TAG, "Stratum response time: %.2f ms", response_time_ms);
-                GLOBAL_STATE->SYSTEM_MODULE.response_time = response_time_ms;
-            }
+            int64_t receive_time_us = esp_timer_get_time();
 
             STRATUM_V1_parse(&stratum_api_v1_message, line);
             free(line);
@@ -617,6 +617,17 @@ void stratum_task(void * pvParameters)
                     ESP_LOGE(TAG, "setup message rejected: %s", stratum_api_v1_message.error_str);
                 }
             }
+
+            float response_time_ms = STRATUM_V1_get_response_time_ms(stratum_api_v1_message.message_id, receive_time_us);
+            if (response_time_ms >= 0) {
+                ESP_LOGI(TAG, "Stratum response time: %.1f ms", response_time_ms);
+                GLOBAL_STATE->SYSTEM_MODULE.response_time = response_time_ms;
+            }
+        }
+
+        if (stratum_api_v1_message.error_str) {
+            free(stratum_api_v1_message.error_str);
+            stratum_api_v1_message.error_str = NULL;
         }
     }
     vTaskDelete(NULL);
