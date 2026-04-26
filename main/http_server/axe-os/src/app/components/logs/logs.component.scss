@@ -9,24 +9,6 @@
     }
 }
 
-.is-expanded {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 999;
-    background: var(--surface-overlay);
-
-    #logs {
-        height: calc(100svh - 4rem - 2rem - 4rem - 4px); // padding + height + border
-
-        @media (min-width: 768px) {
-            height: calc(100vh - 4rem - 4rem - 4px); // padding + height + border
-        }
-    }
-}
-
 .ansi-red { color: #bf616a; }
 .ansi-green { color: #a3be8c; }
 .ansi-yellow { color: #ebdb8b; }
