@@ -1,7 +1,10 @@
+#include <stdlib.h>
+
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "esp_heap_caps.h"
+#include "cJSON.h"
 
 #include "asic_result_task.h"
 #include "create_jobs_task.h"
@@ -26,13 +29,42 @@
 #include "filesystem.h"
 #include "input.h"
 #include "log_buffer.h"
+#include "esp_ota_ops.h"
 
 static GlobalState GLOBAL_STATE;
 
 static const char * TAG = "bitaxe";
 
+static void heap_alloc_failed_hook(size_t requested_size, uint32_t caps, const char *function_name)
+{
+    if (caps & MALLOC_CAP_SPIRAM) {
+        ESP_EARLY_LOGE(TAG, "%s failed to allocate %zu bytes from PSRAM", function_name, requested_size);
+        abort();
+    }
+}
+
+static void *cjson_malloc_psram(size_t size)
+{
+    if (esp_psram_is_initialized()) {
+        return heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+    }
+    return malloc(size);
+}
+
+static void cjson_free_psram(void *ptr)
+{
+    free(ptr);
+}
+
 void app_main(void)
 {
+    ESP_ERROR_CHECK(heap_caps_register_failed_alloc_callback(heap_alloc_failed_hook));
+
+    cJSON_Hooks hooks = {
+        .malloc_fn = cjson_malloc_psram,
+        .free_fn = cjson_free_psram
+    };
+    cJSON_InitHooks(&hooks);
     if (esp_psram_is_initialized()) {
         GLOBAL_STATE.psram_is_available = true;
         log_buffer_init();
@@ -69,6 +101,16 @@ void app_main(void)
     if (nvs_config_init() != ESP_OK) {
         ESP_LOGE(TAG, "Failed to init NVS");
         return;
+    }
+
+    // Confirm app validity for OTA rollback
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t ota_state;
+    if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+            ESP_LOGI(TAG, "First boot after OTA update, confirming app validity");
+            esp_ota_mark_app_valid_cancel_rollback();
+        }
     }
 
     // Ensure SSID is initialized before any screen/self-test uses it.
@@ -123,6 +165,9 @@ void app_main(void)
 
     // After mounting SPIFFS
     SYSTEM_init_versions(&GLOBAL_STATE);
+
+    // Pre-cache partition descriptions and space usage percentage
+    SYSTEM_init_partitions(&GLOBAL_STATE);
 
     // Initialize BAP interface
     esp_err_t bap_ret = BAP_init(&GLOBAL_STATE);
